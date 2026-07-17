@@ -1,0 +1,9 @@
+{
+  "name": "project-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ระบบสรุปงานโครงการ — เก็บข้อมูลด้วย Netlify Blobs",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}
