@@ -68,6 +68,7 @@ function buildSummary(project) {
     name: project.name,
     createdAt: project.createdAt,
     budget: project.budget,
+    manualPct: project.manualPct,
     doc: summarizeItems(docItems, docItemDonePct),
     permit: summarizeItems(permitItems, permitItemDonePct),
     purchase: summarizeItems(purchaseItems, purchaseItemDonePct),
