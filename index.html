@@ -123,6 +123,9 @@
   .budget-line-sm{font-size:11.5px;color:var(--brand-dark);font-weight:600;margin-top:2px;}
   .detail-pct-wrap{display:flex;align-items:center;gap:10px;}
   .detail-pct{font-size:28px;font-weight:800;color:var(--brand);}
+  .detail-pct-input{width:64px;font-size:24px;font-weight:800;color:var(--brand);text-align:right;border:1px solid var(--line);border-radius:8px;padding:4px 6px;}
+  .detail-pct-input:focus{outline:2px solid var(--brand-soft);border-color:var(--brand);}
+  .detail-pct-suffix{font-size:24px;font-weight:800;color:var(--brand);}
 
   .section{
     background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
@@ -404,7 +407,7 @@ function uid(){ return Math.random().toString(36).slice(2,10); }
 
 function emptyProject(name){
   return {
-    id: uid(), name: name, createdAt: new Date().toISOString(), budget: '',
+    id: uid(), name: name, createdAt: new Date().toISOString(), budget: '', manualPct: 0,
     documentCategories: [], permitAgencies: [], purchases: [],
     checklist: CHECKLIST_ITEMS.map(it=>({ id: uid(), itemId: it.id, status:'', note:'' })),
     _loaded: true
@@ -438,7 +441,7 @@ async function loadState(){
     const summaries = await apiGet('/api/overview');
     if(Array.isArray(summaries)){
       state = { projects: summaries.map(s=>({
-        id: s.id, name: s.name, createdAt: s.createdAt, budget: s.budget,
+        id: s.id, name: s.name, createdAt: s.createdAt, budget: s.budget, manualPct: s.manualPct,
         documentCategories: [], permitAgencies: [], purchases: [],
         _loaded: false, _summary: s
       })) };
@@ -648,9 +651,9 @@ function allCatProgressList(project){
   ];
 }
 function overallProgress(project){
-  const vals = allCatProgressList(project).map(x=>x.pct).filter(v=>v!==null);
-  if(!vals.length) return 0;
-  return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  const v = Number(project.manualPct);
+  if(isNaN(v)) return 0;
+  return Math.max(0, Math.min(100, Math.round(v)));
 }
 function barColor(pct){
   if(pct>=70) return 'var(--ok)';
@@ -679,7 +682,6 @@ function renderOverview(){
   grid.innerHTML = state.projects.map(p=>{
     const pct = overallProgress(p);
     const rows = allCatProgressList(p).map(c=>{
-      const display = c.pct===null ? '—' : c.pct+'%';
       const width = c.pct===null ? 0 : c.pct;
       const color = c.pct===null ? 'var(--line)' : barColor(c.pct);
       const countsLine = c.counts ? `<div class="doc-counts">ทั้งหมด ${c.counts.total} · เรียบร้อย ${c.counts.done} · ${c.waitingLabel} ${c.counts.waiting}${c.pendingLabel? ' · '+c.pendingLabel+' '+c.counts.pending : ''}</div>` : '';
@@ -687,7 +689,6 @@ function renderOverview(){
         <div class="prow">
           <span class="lbl">${c.icon} ${c.label}</span>
           <span class="mini-track"><span class="mini-fill" style="width:${width}%;background:${color};"></span></span>
-          <span class="val">${display}</span>
         </div>
         ${countsLine}
       </div>`;
@@ -751,6 +752,7 @@ async function openProjectDetail(projectId){
         project.name = full.name;
         project.createdAt = full.createdAt;
         project.budget = full.budget;
+        project.manualPct = full.manualPct;
         project.documentCategories = full.documentCategories;
         project.permitAgencies = full.permitAgencies;
         project.purchases = full.purchases;
@@ -789,12 +791,13 @@ function renderDetail(){
       <div class="detail-header-top">
         <div>
           <h2>${escapeHtml(project.name)}</h2>
-          <span style="font-size:12.5px;color:var(--ink-soft);">ความคืบหน้ารวมของโครงการ</span>
+          <span style="font-size:12.5px;color:var(--ink-soft);">ความคืบหน้ารวมของโครงการ (กรอกเอง)</span>
           ${project.budget!=='' && project.budget!==null && project.budget!==undefined ? `<div class="budget-line">ยอดเงินโครงการ: ${formatMoney(project.budget)} บาท</div>` : ''}
         </div>
         <div class="detail-pct-wrap">
           <div class="bar-track" style="width:160px;"><div class="bar-fill" style="width:${pct}%;background:${barColor(pct)};"></div></div>
-          <span class="detail-pct">${pct}%</span>
+          <input type="number" id="manualPctInput" class="detail-pct-input" min="0" max="100" step="1" value="${pct}">
+          <span class="detail-pct-suffix">%</span>
         </div>
       </div>
     </div>
@@ -802,7 +805,7 @@ function renderDetail(){
     <div class="section">
       <div class="section-head">
         <h3>📄 1. งานเอกสาร</h3>
-        <span class="section-count">${project.documentCategories.length} หมวด · ทั้งหมด ${docItemCount} รายการ · เรียบร้อย ${docCountsAll.done} · รอตอบกลับ ${docCountsAll.waiting}${docPct!==null? ' · '+docPct+'%':''}</span>
+        <span class="section-count">${project.documentCategories.length} หมวด · ทั้งหมด ${docItemCount} รายการ · เรียบร้อย ${docCountsAll.done} · รอตอบกลับ ${docCountsAll.waiting}</span>
       </div>
       <div class="doc-add-cat-row">
         <button class="btn btn-primary btn-sm" id="btnAddDocCat">+ เพิ่มหมวด</button>
@@ -813,7 +816,7 @@ function renderDetail(){
     <div class="section">
       <div class="section-head">
         <h3>🛂 2. งานขออนุญาต</h3>
-        <span class="section-count">${project.permitAgencies.length} หน่วยงาน · ทั้งหมด ${permitItemsAll.length} รายการ · เรียบร้อย ${permitCountsAll.done} · รออนุมัติ ${permitCountsAll.waiting}${permitPct!==null? ' · '+permitPct+'%':''}</span>
+        <span class="section-count">${project.permitAgencies.length} หน่วยงาน · ทั้งหมด ${permitItemsAll.length} รายการ · เรียบร้อย ${permitCountsAll.done} · รออนุมัติ ${permitCountsAll.waiting}</span>
       </div>
       <div class="doc-add-cat-row">
         <button class="btn btn-primary btn-sm" id="btnAddAgency">+ เพิ่มหน่วยงาน</button>
@@ -836,7 +839,7 @@ function renderDetail(){
     <div class="section">
       <div class="section-head">
         <h3>📦 3. รายการของที่ซื้อ/ของที่เข้า</h3>
-        <span class="section-count">ทั้งหมด ${project.purchases.length} รายการ · เรียบร้อย ${purchaseCountsAll.done} · รอของเข้า ${purchaseCountsAll.waiting} · ยังไม่มี PO ${purchaseCountsAll.pending}${purchasePct!==null? ' · '+purchasePct+'%':''}</span>
+        <span class="section-count">ทั้งหมด ${project.purchases.length} รายการ · เรียบร้อย ${purchaseCountsAll.done} · รอของเข้า ${purchaseCountsAll.waiting} · ยังไม่มี PO ${purchaseCountsAll.pending}</span>
       </div>
       <div class="excel-row">
         <span class="excel-hint">นำเข้าจากไฟล์ Excel/CSV (คอลัมน์: PR No., Mat.Name, PR QTY, PR OTH QTY, P/O QTY, Unit, PO No., PO Receive)</span>
@@ -867,7 +870,7 @@ function renderDetail(){
     <div class="section">
       <div class="section-head">
         <h3>📋 4. เช็คลิสต์แฟ้มส่งงาน</h3>
-        <span class="section-count">ครบแล้ว ${checklistCountsAll.done}/${checklistCountsAll.total} รายการ · ${checklistCountsAll.pct}%</span>
+        <span class="section-count">ครบแล้ว ${checklistCountsAll.done}/${checklistCountsAll.total} รายการ</span>
       </div>
       ${renderChecklistTable(project)}
     </div>
@@ -884,7 +887,7 @@ function renderDocCategories(project){
   return project.documentCategories.map(cat=>{
     const c = docCounts(cat.items);
     const pctLabel = cat.items.length
-      ? `ทั้งหมด ${c.total} · เรียบร้อย ${c.done} · รอตอบกลับ ${c.waiting} · ${Math.round((c.done*100+c.waiting*50)/c.total)}%`
+      ? `ทั้งหมด ${c.total} · เรียบร้อย ${c.done} · รอตอบกลับ ${c.waiting}`
       : 'ยังไม่มีรายการ';
     return `
       <div class="doc-cat" data-cat-id="${cat.id}">
@@ -969,7 +972,7 @@ function renderPermitAgencies(project){
     const type = AGENCY_TYPES.find(t=>t.key===block.agencyType) || AGENCY_TYPES[AGENCY_TYPES.length-1];
     const c = permitCounts(block.items);
     const pctLabel = block.items.length
-      ? `ทั้งหมด ${c.total} · เรียบร้อย ${c.done} · รออนุมัติ ${c.waiting} · ${Math.round((c.done*100+c.waiting*50)/c.total)}%`
+      ? `ทั้งหมด ${c.total} · เรียบร้อย ${c.done} · รออนุมัติ ${c.waiting}`
       : 'ยังไม่มีรายการ';
     return `
       <div class="doc-cat" data-agency-id="${block.id}">
@@ -1070,7 +1073,7 @@ function renderPurchasesGroups(items){
     if(query && !displayItems.length) return;
     if(query) anyMatch = true;
     const c = purchaseCounts(groupItems);
-    const pctLabel = `ทั้งหมด ${c.total} · เรียบร้อย ${c.done} · รอของเข้า ${c.waiting} · ยังไม่มี PO ${c.pending} · ${Math.round((c.done*100+c.waiting*50)/c.total)}%`;
+    const pctLabel = `ทั้งหมด ${c.total} · เรียบร้อย ${c.done} · รอของเข้า ${c.waiting} · ยังไม่มี PO ${c.pending}`;
     const matchNote = query ? ` · พบ ${displayItems.length} รายการที่ตรงกับคำค้นหา` : '';
     const collapsed = query ? false : collapsedPurchaseGroups.has(groupKey);
     html += `
@@ -1182,6 +1185,20 @@ function renderChecklistTable(project){
 }
 
 function attachDetailListeners(project){
+  // ความคืบหน้ารวม (กรอกเอง)
+  const manualPctInput = document.getElementById('manualPctInput');
+  if(manualPctInput){
+    manualPctInput.addEventListener('change', async e=>{
+      let v = parseFloat(e.target.value);
+      if(isNaN(v)) v = 0;
+      v = Math.max(0, Math.min(100, Math.round(v)));
+      project.manualPct = v;
+      await saveState();
+      renderDetail();
+      renderOverview();
+    });
+  }
+
   // per-column drag-to-resize (ลากขอบคอลัมน์เพื่อปรับความกว้าง) — shared across doc/permit/purchase tables
   const COL_WIDTH_STORES = { doc: colWidthsDoc, permit: colWidthsPermit, purchase: colWidthsPurchase };
   document.querySelectorAll('.col-resizer').forEach(handle=>{
